@@ -17,6 +17,7 @@ public class UserAccountRecord
     public string EncryptedKeystoreJson { get; set; } = string.Empty;
     public UserPublicKeyAnnouncement Announcement { get; set; } = null!;
     public string AvatarUrl { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
     public List<string> Friends { get; set; } = new();
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -124,7 +125,7 @@ public class UserAccountStore
 
     public bool UserExists(string username) => _accounts.ContainsKey(username);
 
-    public UserKeyBundle Register(string username, string password, string groupName)
+    public UserKeyBundle Register(string username, string password, string groupName = "rfc2048", string? email = null)
     {
         if (string.IsNullOrWhiteSpace(username))
             throw new ArgumentException("Tên đăng nhập không được để trống.", nameof(username));
@@ -168,6 +169,7 @@ public class UserAccountStore
             PasswordHashBase64 = Convert.ToBase64String(passwordHash),
             EncryptedKeystoreJson = encryptedKeystore,
             Announcement = bundle.ToAnnouncement(),
+            Email = email ?? string.Empty,
             CreatedAt = DateTimeOffset.UtcNow
         };
 

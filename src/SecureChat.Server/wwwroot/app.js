@@ -186,6 +186,116 @@ window.toggleInfoPanel = function(force) {
         const willCollapse = force !== undefined ? !force : !panel.classList.contains("collapsed");
         panel.classList.toggle("collapsed", willCollapse);
     }
+// ==========================================================================
+// EMAIL OTP VERIFICATION
+// ==========================================================================
+let otpCooldownInterval = null;
+let currentDevOtp = null;
+
+window.requestEmailOtp = async function() {
+    const email = document.getElementById("reg-email")?.value.trim();
+    const username = document.getElementById("reg-username")?.value.trim() || "Người dùng";
+
+    if (!email) {
+        alert("Vui lòng nhập địa chỉ Email trước khi yêu cầu gửi mã OTP!");
+        document.getElementById("reg-email")?.focus();
+        return;
+    }
+
+    if (!email.includes("@") || !email.includes(".")) {
+        alert("Địa chỉ email không hợp lệ! Vui lòng nhập đúng định dạng (ví dụ: name@gmail.com).");
+        document.getElementById("reg-email")?.focus();
+        return;
+    }
+
+    const btn = document.getElementById("btn-send-otp");
+    const btnText = document.getElementById("btn-send-otp-text");
+    btn.disabled = true;
+    if (btnText) btnText.innerText = "Đang gửi...";
+
+    try {
+        const resp = await fetch("/api/auth/send-email-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email, username: username })
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            throw new Error(data.error || "Không thể gửi OTP.");
+        }
+
+        currentDevOtp = data.devOtp;
+
+        // Show status toast
+        showOtpToast(data.message, data.devOtp, !data.realEmailSent);
+
+        const hintEl = document.getElementById("otp-hint");
+        const hintText = document.getElementById("otp-hint-text");
+        if (hintEl) hintEl.style.display = "flex";
+        if (hintText) {
+            hintText.innerText = data.realEmailSent
+                ? `Đã gửi mã OTP đến ${email}. Hãy kiểm tra hộp thư đến hoặc Spam!`
+                : `Đã tạo mã OTP mô phỏng (Chưa cấu hình API Key Email): ${data.devOtp}`;
+        }
+
+        const otpInput = document.getElementById("reg-otp");
+        if (otpInput) otpInput.focus();
+
+        // 60-second cooldown
+        let remaining = 60;
+        if (btnText) btnText.innerText = `Gửi lại (${remaining}s)`;
+        if (otpCooldownInterval) clearInterval(otpCooldownInterval);
+        otpCooldownInterval = setInterval(() => {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(otpCooldownInterval);
+                btn.disabled = false;
+                if (btnText) btnText.innerText = "Gửi OTP qua Email";
+            } else {
+                if (btnText) btnText.innerText = `Gửi lại (${remaining}s)`;
+            }
+        }, 1000);
+
+    } catch (err) {
+        alert("Lỗi gửi OTP: " + err.message);
+        btn.disabled = false;
+        if (btnText) btnText.innerText = "Gửi OTP qua Email";
+    }
+};
+
+window.showOtpToast = function(statusMsg, devCode, isSimulated) {
+    const toast = document.getElementById("otp-toast");
+    const statusEl = document.getElementById("otp-toast-status-msg");
+    const devWrap = document.getElementById("otp-toast-dev-wrap");
+    const codeEl = document.getElementById("toast-otp-code");
+
+    if (!toast) return;
+    if (statusEl) statusEl.innerText = statusMsg;
+
+    if (isSimulated && devCode) {
+        if (devWrap) devWrap.style.display = "block";
+        if (codeEl) codeEl.innerText = devCode;
+    } else {
+        if (devWrap) devWrap.style.display = "none";
+    }
+
+    toast.style.display = "block";
+};
+
+window.closeOtpToast = function() {
+    const toast = document.getElementById("otp-toast");
+    if (toast) toast.style.display = "none";
+};
+
+window.autoFillOtp = function() {
+    if (currentDevOtp) {
+        const otpInput = document.getElementById("reg-otp");
+        if (otpInput) {
+            otpInput.value = currentDevOtp;
+            closeOtpToast();
+        }
+    }
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -257,20 +367,38 @@ function setupAuthHandlers() {
     // 1. REGISTER
     btnRegister.addEventListener("click", async () => {
         const username = document.getElementById("reg-username").value.trim();
+        const email = document.getElementById("reg-email").value.trim();
         const password = document.getElementById("reg-password").value;
         const confirmPassword = document.getElementById("reg-confirm-password").value;
+        const otp = document.getElementById("reg-otp")?.value.trim();
         const group = "rfc2048";
 
         if (!username) { alert("Vui lòng nhập tên tài khoản!"); return; }
+        if (!email) { 
+            alert("Vui lòng nhập địa chỉ Email nhận mã OTP!"); 
+            document.getElementById("reg-email")?.focus();
+            return; 
+        }
         if (!password || password.length < 6) { alert("Mật khẩu phải từ 6 ký tự trở lên!"); return; }
         if (password !== confirmPassword) { alert("Xác nhận mật khẩu không khớp!"); return; }
+        if (!otp) {
+            alert("Vui lòng bấm 'Gửi OTP qua Email' và nhập mã xác nhận 6 chữ số!");
+            document.getElementById("reg-otp")?.focus();
+            return;
+        }
 
-        showLoading(true, "Đang sinh cặp khóa ElGamal 2048-bit và mã hóa Keystore PBKDF2...");
+        showLoading(true, "Đang xác thực OTP, sinh cặp khóa ElGamal 2048-bit và mã hóa Keystore PBKDF2...");
         try {
             const resp = await fetch("/api/auth/register", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username: username, password: password, groupName: group })
+                body: JSON.stringify({ 
+                    username: username, 
+                    email: email, 
+                    password: password, 
+                    otp: otp, 
+                    groupName: group 
+                })
             });
 
             if (!resp.ok) {
@@ -546,126 +674,9 @@ function updateMyAvatarDisplay() {
     if (!el) return;
     const initial = (currentUser.userId || "A").charAt(0).toUpperCase();
 
-    if (currentUser.avatarUrl) {
-        if (currentUser.avatarUrl.startsWith("preset:")) {
-            const pId = currentUser.avatarUrl.replace("preset:", "");
-            const p = AVATAR_PRESETS.find(x => x.id === pId);
-            if (p) {
-                el.style.background = p.bg;
-                if (p.isImg) {
-                    el.innerHTML = `<img src="${p.icon}" class="avatar-img" /><span class="avatar-edit-badge"><i class="fas fa-camera"></i></span>`;
-                } else {
-                    el.innerHTML = `<span style="font-size: 1.3rem;">${p.icon}</span><span class="avatar-edit-badge"><i class="fas fa-camera"></i></span>`;
-                }
-                return;
-            }
-        } else if (currentUser.avatarUrl.startsWith("data:") || currentUser.avatarUrl.startsWith("http")) {
-            el.style.background = "transparent";
-            el.innerHTML = `<img src="${currentUser.avatarUrl}" class="avatar-img" /><span class="avatar-edit-badge"><i class="fas fa-camera"></i></span>`;
-            return;
-        }
-    }
-
     el.style.background = getAvatarColor(currentUser.userId);
-    el.innerHTML = `<span id="my-avatar-letter">${initial}</span><span class="avatar-edit-badge"><i class="fas fa-camera"></i></span>`;
+    el.innerHTML = `<span id="my-avatar-letter">${initial}</span>`;
 }
-
-let selectedAvatarChoice = "";
-
-window.openAvatarModal = function() {
-    document.getElementById("avatar-modal").style.display = "flex";
-    selectedAvatarChoice = currentUser.avatarUrl || "";
-    renderAvatarPresets();
-    updateLiveAvatarPreview(selectedAvatarChoice);
-};
-
-window.closeAvatarModal = function() {
-    document.getElementById("avatar-modal").style.display = "none";
-};
-
-function renderAvatarPresets() {
-    const grid = document.getElementById("avatar-presets-grid");
-    if (!grid) return;
-    grid.innerHTML = "";
-    AVATAR_PRESETS.forEach(p => {
-        const item = document.createElement("div");
-        const val = "preset:" + p.id;
-        item.className = "avatar-choice-item" + (selectedAvatarChoice === val ? " selected" : "");
-        item.style.background = p.bg;
-        if (p.isImg) {
-            item.innerHTML = `<img src="${p.icon}" class="avatar-img" alt="${p.name}" />`;
-        } else {
-            item.innerHTML = p.icon;
-        }
-        item.title = p.name;
-        item.onclick = () => {
-            selectedAvatarChoice = val;
-            document.querySelectorAll(".avatar-choice-item").forEach(el => el.classList.remove("selected"));
-            item.classList.add("selected");
-            updateLiveAvatarPreview(val);
-        };
-        grid.appendChild(item);
-    });
-}
-
-function updateLiveAvatarPreview(val) {
-    const previewEl = document.getElementById("avatar-live-preview");
-    if (!previewEl) return;
-    renderAvatarIntoElement(previewEl, currentUser.userId, val);
-}
-
-window.handleCustomAvatarUpload = function(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-        alert("Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, GIF)!");
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const img = new Image();
-        img.onload = function() {
-            // Resize to 128x128 for speed & lightweight payload
-            const canvas = document.createElement("canvas");
-            canvas.width = 128;
-            canvas.height = 128;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, 128, 128);
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-            selectedAvatarChoice = dataUrl;
-            document.querySelectorAll(".avatar-choice-item").forEach(el => el.classList.remove("selected"));
-            updateLiveAvatarPreview(dataUrl);
-        };
-        img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-};
-
-window.saveSelectedAvatar = async function() {
-    if (!selectedAvatarChoice) {
-        alert("Vui lòng chọn một avatar hoặc tải ảnh lên!");
-        return;
-    }
-    try {
-        const resp = await fetch("/api/user/update-avatar", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: currentUser.userId, avatarUrl: selectedAvatarChoice })
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.error || "Cập nhật avatar thất bại.");
-        }
-        currentUser.avatarUrl = selectedAvatarChoice;
-        updateMyAvatarDisplay();
-        renderContactList();
-        updateRecipientHeader();
-        closeAvatarModal();
-        alert("Đã cập nhật ảnh đại diện thành công!");
-    } catch (err) {
-        alert("Lỗi cập nhật ảnh đại diện: " + err.message);
-    }
-};
 
 // ==========================================================================
 // 5. FRIENDS SYSTEM

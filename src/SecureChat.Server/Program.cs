@@ -22,6 +22,8 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<PublicKeyDirectory>();
 builder.Services.AddSingleton<MongoDbService>();
 builder.Services.AddSingleton<UserAccountStore>();
+builder.Services.AddSingleton<OtpService>();
+builder.Services.AddSingleton<EmailService>();
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -57,12 +59,69 @@ app.UseStaticFiles();
 // SignalR Chat Hub
 app.MapHub<ChatHub>("/chathub");
 
-// API: Register New Account
-app.MapPost("/api/auth/register", (RegisterRequest req, UserAccountStore accountStore) =>
+// API: Send OTP to Email
+app.MapPost("/api/auth/send-email-otp", async (SendEmailOtpRequest req, OtpService otpService, EmailService emailService, ILogger<Program> logger) =>
 {
     try
     {
-        var bundle = accountStore.Register(req.Username, req.Password, req.GroupName ?? "rfc2048");
+        string email = req.Email?.Trim() ?? string.Empty;
+        string username = req.Username?.Trim() ?? "Người dùng";
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return Results.BadRequest(new { error = "Vui lòng nhập địa chỉ email nhận mã OTP." });
+        }
+
+        if (!email.Contains('@') || !email.Contains('.'))
+        {
+            return Results.BadRequest(new { error = "Địa chỉ email không hợp lệ. Vui lòng nhập đúng email (ví dụ: name@gmail.com)." });
+        }
+
+        var record = otpService.GenerateOtp(email);
+        logger.LogInformation("📧 [OTP Service] Đã tạo mã OTP {Code} cho email {Email}", record.Code, email);
+
+        // Send email via EmailService
+        var sendResult = await emailService.SendOtpEmailAsync(email, username, record.Code);
+
+        return Results.Ok(new
+        {
+            success = true,
+            message = sendResult.Message,
+            realEmailSent = sendResult.RealEmailSent,
+            provider = emailService.GetConfiguredProvider(),
+            devOtp = sendResult.RealEmailSent ? null : record.Code, // Provided only if no API key is configured yet for convenience
+            expiresInSeconds = (int)(record.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// API: Verify OTP standalone
+app.MapPost("/api/auth/verify-otp", (VerifyOtpRequest req, OtpService otpService) =>
+{
+    bool valid = otpService.VerifyOtp(req.Target, req.Otp, consume: false);
+    return Results.Ok(new { valid });
+});
+
+// API: Register New Account with Email OTP
+app.MapPost("/api/auth/register", (RegisterRequest req, UserAccountStore accountStore, OtpService otpService) =>
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(req.Otp))
+        {
+            return Results.BadRequest(new { error = "Vui lòng nhập mã OTP xác thực (bấm 'Gửi OTP qua Email' để nhận mã)." });
+        }
+
+        if (!otpService.VerifyOtpForEmailOrUser(req.Email, req.Username, req.Otp))
+        {
+            return Results.BadRequest(new { error = "Mã OTP không đúng hoặc đã hết hạn (5 phút)! Vui lòng kiểm tra lại email hoặc bấm 'Gửi lại mã'." });
+        }
+
+        var bundle = accountStore.Register(req.Username, req.Password, req.GroupName ?? "rfc2048", req.Email);
         return Results.Ok(new KeyBundleResponse(
             UserId: bundle.UserId,
             KeyId: bundle.KeyId,
@@ -75,7 +134,7 @@ app.MapPost("/api/auth/register", (RegisterRequest req, UserAccountStore account
             EncryptionFingerprint: bundle.EncryptionFingerprint,
             SigningFingerprint: bundle.SigningFingerprint,
             CombinedFingerprint: bundle.CombinedFingerprint,
-            AvatarUrl: accountStore.GetAvatar(bundle.UserId),
+            AvatarUrl: string.Empty,
             Friends: accountStore.GetFriends(bundle.UserId)
         ));
     }
@@ -505,7 +564,10 @@ public record ExportKeystoreRequest(
 );
 
 public record ImportKeystoreRequest(string KeystoreJson, string Passphrase);
-public record RegisterRequest(string Username, string Password, string? GroupName);
+public record SendEmailOtpRequest(string Email, string? Username);
+public record SendOtpRequest(string Target, string? Type);
+public record VerifyOtpRequest(string Target, string Otp);
+public record RegisterRequest(string Username, string Password, string? GroupName, string? Email, string? Otp);
 public record LoginRequest(string Username, string Password);
 public record FriendActionRequest(string Username, string FriendUsername);
 public record UpdateAvatarRequest(string Username, string AvatarUrl);
