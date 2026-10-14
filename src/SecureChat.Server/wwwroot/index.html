@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ri Tetsuya • Chat Bảo Mật ElGamal–AES</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+</head>
+<body class="messenger-dark">
+    <!-- APP ROOT -->
+    <div id="app" class="messenger-app">
+        
+        <!-- ================= AUTH MODAL (LOGIN & REGISTER) ================= -->
+        <div id="auth-overlay" class="auth-overlay">
+            <div class="auth-card">
+                <div class="auth-brand">
+                    <div class="app-brand-logo-wrap">
+                        <img src="logo.png" alt="Ri Tetsuya Logo" class="app-brand-logo">
+                    </div>
+                    <h2>Ri Tetsuya</h2>
+                    <p class="auth-desc">Ứng dụng nhắn tin an toàn với Mã hóa lai ElGamal–AES-256-GCM, Chữ ký số &amp; Quản lý khóa</p>
+                </div>
+
+                <!-- AUTH TABS -->
+                <div class="auth-nav">
+                    <button type="button" class="auth-nav-btn active" id="tab-btn-register" onclick="switchAuthTab('register')">
+                        <i class="fas fa-user-plus"></i> Đăng Ký
+                    </button>
+                    <button type="button" class="auth-nav-btn" id="tab-btn-login" onclick="switchAuthTab('login')">
+                        <i class="fas fa-sign-in-alt"></i> Đăng Nhập
+                    </button>
+                </div>
+
+                <!-- REGISTER FORM -->
+                <div id="form-register" class="auth-form-pane">
+                    <div class="form-field">
+                        <label>Tên tài khoản:</label>
+                        <div class="input-icon-wrap">
+                            <i class="fas fa-user"></i>
+                            <input type="text" id="reg-username" class="msg-input" placeholder="Nhập tên tài khoản...">
+                        </div>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Mật khẩu:</label>
+                        <div class="input-icon-wrap">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="reg-password" class="msg-input" placeholder="Nhập mật khẩu của bạn...">
+                        </div>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Xác nhận mật khẩu:</label>
+                        <div class="input-icon-wrap">
+                            <i class="fas fa-check-circle"></i>
+                            <input type="password" id="reg-confirm-password" class="msg-input" placeholder="Nhập lại mật khẩu để xác nhận...">
+                        </div>
+                    </div>
+
+                    <button class="msg-btn msg-btn-primary" id="btn-submit-register">
+                        <i class="fas fa-shield-alt"></i> Đăng Ký Tài Khoản
+                    </button>
+                </div>
+
+                <!-- LOGIN FORM -->
+                <div id="form-login" class="auth-form-pane" style="display: none;">
+                    <div class="form-field">
+                        <label>Tên tài khoản:</label>
+                        <div class="input-icon-wrap">
+                            <i class="fas fa-user"></i>
+                            <input type="text" id="login-username" class="msg-input" placeholder="Nhập tên tài khoản đã đăng ký...">
+                        </div>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Mật khẩu:</label>
+                        <div class="input-icon-wrap">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="login-password" class="msg-input" placeholder="Nhập mật khẩu...">
+                        </div>
+                    </div>
+
+                    <button class="msg-btn msg-btn-primary" id="btn-submit-login">
+                        <i class="fas fa-unlock-alt"></i> Mở Khóa Keystore &amp; Đăng Nhập
+                    </button>
+
+                    <div class="auth-footer-actions">
+                        <button type="button" class="btn-link" id="btn-show-import">
+                            <i class="fas fa-file-import"></i> Khôi phục từ tệp Keystore sao lưu (.json)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- IMPORT SECTION -->
+                <div id="import-section" class="import-section" style="display: none;">
+                    <label>Chọn file JSON Keystore đã sao lưu:</label>
+                    <input type="file" id="keystore-file-input" accept=".json" class="file-input">
+                    <button class="msg-btn msg-btn-secondary" id="btn-import-keystore">
+                        <i class="fas fa-upload"></i> Nạp File &amp; Đăng Nhập
+                    </button>
+                </div>
+
+                <!-- LOADING -->
+                <div id="auth-loading" class="auth-loading" style="display: none;">
+                    <div class="msg-spinner"></div>
+                    <span id="loading-text">Đang tạo khóa toán học và mã hóa Keystore...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MESSENGER MAIN WORKSPACE ================= -->
+        <div id="main-workspace" class="messenger-workspace" style="display: none;">
+            
+            <!-- 1. LEFT COLUMN: CHAT LIST & USER MENU -->
+            <aside class="msg-sidebar">
+                <!-- PROFILE HEADER -->
+                <div class="msg-sidebar-header">
+                    <div class="my-profile-badge">
+                        <div class="avatar avatar-md my-avatar-circle" id="my-avatar-initials" onclick="openAvatarModal()" title="Nhấp để đổi ảnh đại diện">
+                            <span id="my-avatar-letter">A</span>
+                            <span class="avatar-edit-badge"><i class="fas fa-camera"></i></span>
+                        </div>
+                        <div class="profile-info">
+                            <div class="profile-brand-name">
+                                <h3 id="bar-username">Alice</h3>
+                                <span class="app-brand-chip"><img src="logo.png" class="tiny-chip-logo" alt="" /> Ri Tetsuya</span>
+                            </div>
+                            <span class="e2ee-tag"><i class="fas fa-lock"></i> E2EE Active</span>
+                        </div>
+                    </div>
+                    <div class="header-actions">
+                        <button class="icon-btn" title="Đổi chế độ Sáng / Tối" id="btn-toggle-theme" onclick="toggleTheme()">
+                            <i class="fas fa-moon" id="theme-icon"></i>
+                        </button>
+                        <button class="icon-btn" title="Phòng Thực Nghiệm Lý Thuyết" onclick="openTheoryModal()">
+                            <i class="fas fa-graduation-cap"></i>
+                        </button>
+                        <button class="icon-btn" title="Đăng Xuất" id="btn-logout">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SEARCH BAR & ADD FRIEND BUTTON -->
+                <div class="msg-search-box">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="contact-search-input" placeholder="Tìm kiếm bạn bè..." onkeyup="filterContacts()">
+                    <button class="icon-btn-search" title="Thêm bạn bè mới" onclick="openAddFriendModal()">
+                        <i class="fas fa-user-plus"></i>
+                    </button>
+                </div>
+
+                <!-- SIDEBAR TABS: FRIENDS VS ALL DIRECTORY -->
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab active" id="tab-contacts-friends" onclick="switchContactFilter('friends')">
+                        <i class="fas fa-user-friends"></i> Bạn bè (<span id="friend-count">0</span>)
+                    </button>
+                    <button class="sidebar-tab" id="tab-contacts-all" onclick="switchContactFilter('all')">
+                        <i class="fas fa-globe"></i> Tất cả (<span id="all-count">0</span>)
+                    </button>
+                </div>
+
+                <!-- ONLINE USERS STORIES ROW -->
+                <div class="online-stories-section">
+                    <div class="stories-label">Đang hoạt động</div>
+                    <div class="stories-row" id="stories-row">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- CONVERSATIONS LIST -->
+                <div class="conversations-header">
+                    <span id="conv-header-title">Danh sách đoạn chat</span>
+                </div>
+                <div class="conversation-list" id="contact-list">
+                    <!-- Populated by JS -->
+                </div>
+
+                <!-- MY FINGERPRINT CARD AT BOTTOM -->
+                <div class="my-fingerprint-box">
+                    <div class="fp-header">
+                        <i class="fas fa-fingerprint"></i> Dấu vân tay của bạn (SHA-256):
+                    </div>
+                    <div class="fp-text" id="my-fingerprint-display">--</div>
+                    <div class="fp-desc">Dùng để bạn bè đối chiếu out-of-band chống MITM (Chương 5.3)</div>
+                </div>
+            </aside>
+
+            <!-- 2. CENTER COLUMN: ACTIVE CHAT CONVERSATION -->
+            <main class="msg-chat-pane">
+                
+                <!-- CHAT TOP BAR -->
+                <header class="chat-navbar">
+                    <div class="chat-navbar-user">
+                        <div class="avatar avatar-sm recipient-avatar-circle" id="active-recipient-avatar">?</div>
+                        <div>
+                            <h3 id="current-recipient-name">Chọn một đoạn chat</h3>
+                            <p class="status-subtext" id="current-recipient-status">
+                                <span class="lock-icon"><i class="fas fa-lock"></i></span> Đoạn chat được mã hóa đầu cuối ElGamal–AES
+                            </p>
+                        </div>
+                    </div>
+                    <div class="chat-navbar-actions">
+                        <button class="icon-btn" title="Đối chiếu dấu vân tay khóa" id="btn-verify-contact" style="display: none;">
+                            <i class="fas fa-shield-alt"></i>
+                        </button>
+                        <button class="icon-btn" title="Bật/Tắt Thông tin & Mật mã" id="btn-toggle-info-panel">
+                            <i class="fas fa-info-circle"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- ATTACK SIMULATOR TOOLBAR (Messenger Shortcuts) -->
+                <div class="attack-toolbar">
+                    <span class="attack-label"><i class="fas fa-bolt"></i> Thử nghiệm an toàn:</span>
+                    <label class="attack-pill">
+                        <input type="radio" name="send-mode" value="normal" checked>
+                        <span><i class="fas fa-check-shield"></i> Chuẩn E2EE</span>
+                    </label>
+                    <label class="attack-pill attack-pill-warn">
+                        <input type="radio" name="send-mode" value="tamper-cipher">
+                        <span><i class="fas fa-bug"></i> Giả mạo Ciphertext</span>
+                    </label>
+                    <label class="attack-pill attack-pill-warn">
+                        <input type="radio" name="send-mode" value="tamper-sig">
+                        <span><i class="fas fa-file-signature"></i> Giả mạo Chữ ký (r,s)</span>
+                    </label>
+                    <label class="attack-pill attack-pill-warn">
+                        <input type="radio" name="send-mode" value="tamper-sender">
+                        <span><i class="fas fa-mask"></i> Giả mạo Người gửi (AAD)</span>
+                    </label>
+                </div>
+
+                <!-- MESSAGES THREAD -->
+                <div class="chat-thread" id="chat-messages">
+                    <div class="chat-welcome-notice">
+                        <div class="welcome-logo-wrap">
+                            <img src="logo.png" class="welcome-app-logo" alt="Ri Tetsuya">
+                        </div>
+                        <h3>Bắt đầu cuộc trò chuyện trên Ri Tetsuya</h3>
+                        <p>Các tin nhắn trong đoạn chat này được bảo vệ bởi chuẩn mã hóa lai <strong>ElGamal–AES-256-GCM</strong> và xác thực danh tính bằng <strong>Chữ ký số ElGamal–SHA256</strong>.</p>
+                        <p class="welcome-sub">Không một ai ở bên ngoài (kể cả Server trung gian) có thể đọc được tin nhắn của bạn.</p>
+                    </div>
+                </div>
+
+                <!-- CHAT COMPOSER (Messenger Capsule Input) -->
+                <footer class="chat-composer-area">
+                    <div class="composer-container">
+                        <button class="composer-action-btn" title="Gửi biểu tượng thích" onclick="sendQuickEmoji('👍')">
+                            <i class="fas fa-thumbs-up"></i>
+                        </button>
+                        <div class="composer-input-pill">
+                            <input type="text" id="message-input" placeholder="Aa (Nhập tin nhắn bảo mật...)" autocomplete="off">
+                            <button class="emoji-btn" onclick="sendQuickEmoji('🔒')" title="Biểu tượng bảo mật">🔒</button>
+                            <button class="emoji-btn" onclick="sendQuickEmoji('❤️')" title="Trái tim">❤️</button>
+                            <button class="emoji-btn" onclick="sendQuickEmoji('🔥')" title="Lửa">🔥</button>
+                        </div>
+                        <button class="composer-send-btn" id="btn-send-message" title="Gửi tin nhắn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </footer>
+            </main>
+
+            <!-- 3. RIGHT COLUMN: DETAILS & CRYPTO MANAGEMENT (Messenger Info Panel) -->
+            <aside class="msg-info-panel" id="msg-info-panel">
+                <div class="info-panel-content">
+                    
+                    <!-- USER DETAILS PROFILE -->
+                    <div class="info-profile-section">
+                        <div class="avatar avatar-lg recipient-avatar-circle" id="info-panel-avatar">?</div>
+                        <h3 id="info-panel-name">Chi tiết cuộc trò chuyện</h3>
+                        <span class="badge-e2ee"><i class="fas fa-lock"></i> Mã Hóa Đầu Cuối</span>
+                    </div>
+
+                    <!-- ACTION SHORTCUTS -->
+                    <div class="info-shortcuts">
+                        <button class="shortcut-item" onclick="openKeyMgmtModal()">
+                            <div class="shortcut-icon"><i class="fas fa-key"></i></div>
+                            <span>Khóa</span>
+                        </button>
+                        <button class="shortcut-item" onclick="openTheoryModal()">
+                            <div class="shortcut-icon"><i class="fas fa-calculator"></i></div>
+                            <span>Lab</span>
+                        </button>
+                        <button class="shortcut-item" id="info-verify-btn">
+                            <div class="shortcut-icon"><i class="fas fa-fingerprint"></i></div>
+                            <span>So Khóa</span>
+                        </button>
+                        <button class="shortcut-item" onclick="openMongoModal()">
+                            <div class="shortcut-icon" style="color: #10b981;"><i class="fas fa-database"></i></div>
+                            <span>MongoDB</span>
+                        </button>
+                    </div>
+
+                    <!-- MONGODB LIVE STATUS PILL -->
+                    <div style="padding: 0 16px 8px 16px;">
+                        <div class="mongo-status-pill" id="mongo-status-pill" onclick="openMongoModal()" title="Nhấp để cấu hình và xem chi tiết sao lưu MongoDB">
+                            <span class="mongo-status-dot" id="mongo-status-dot"></span>
+                            <span id="mongo-status-text">MongoDB: Đang kiểm tra...</span>
+                            <i class="fas fa-cog" style="font-size: 0.75rem; margin-left: auto; opacity: 0.7;"></i>
+                        </div>
+                    </div>
+
+                    <!-- FRIEND ACTION TOGGLE IN INFO PANEL -->
+                    <div style="padding: 0 16px 12px 16px;">
+                        <button class="msg-btn msg-btn-secondary" id="btn-friend-toggle" onclick="toggleCurrentFriendship()" style="width: 100%;">
+                            <i class="fas fa-user-plus"></i> Thêm bạn bè
+                        </button>
+                    </div>
+
+                    <!-- ACCORDION: CRYPTOGRAPHIC PARAMETERS -->
+                    <div class="accordion-item">
+                        <div class="accordion-header" onclick="toggleAccordion('acc-crypto')">
+                            <span><i class="fas fa-shield-alt"></i> Khóa Công Khai &amp; Dấu Vân Tay</span>
+                            <i class="fas fa-chevron-down acc-icon"></i>
+                        </div>
+                        <div class="accordion-body" id="acc-crypto">
+                            <div class="info-field">
+                                <label>Dấu vân tay đối phương:</label>
+                                <div class="mono-box" id="info-contact-fp">--</div>
+                            </div>
+                            <div class="info-field">
+                                <label>Khóa công khai mã hóa y_enc:</label>
+                                <div class="mono-box" id="info-contact-y-enc">--</div>
+                            </div>
+                            <div class="info-field">
+                                <label>Khóa công khai ký số y_sig:</label>
+                                <div class="mono-box" id="info-contact-y-sig">--</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ACCORDION: KEY ROTATION & BACKUP -->
+                    <div class="accordion-item">
+                        <div class="accordion-header" onclick="toggleAccordion('acc-backup')">
+                            <span><i class="fas fa-database"></i> Sao Lưu &amp; Thu Hồi Khóa</span>
+                            <i class="fas fa-chevron-down acc-icon"></i>
+                        </div>
+                        <div class="accordion-body" id="acc-backup">
+                            <p class="small-desc">Xuất Keystore đã mã hóa bằng PBKDF2 + AES-GCM hoặc thu hồi bộ khóa hiện tại.</p>
+                            <button class="btn-action btn-backup" id="btn-export-keystore-panel">
+                                <i class="fas fa-download"></i> Tải Keystore Backup (.json)
+                            </button>
+                            <button class="btn-action btn-rotate" id="btn-rotate-keys-panel">
+                                <i class="fas fa-sync-alt"></i> Thu Hồi &amp; Đổi Khóa Mới
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ACCORDION: PRIVACY & SYSTEM INFO -->
+                    <div class="accordion-item">
+                        <div class="accordion-header" onclick="toggleAccordion('acc-info')">
+                            <span><i class="fas fa-info-circle"></i> Về Giao Thức Bảo Mật</span>
+                            <i class="fas fa-chevron-down acc-icon"></i>
+                        </div>
+                        <div class="accordion-body" id="acc-info">
+                            <ul class="info-list">
+                                <li><strong>Thuật toán:</strong> ElGamal–AES-256-GCM</li>
+                                <li><strong>Chữ ký số:</strong> ElGamal Signature + SHA-256</li>
+                                <li><strong>Quản lý khóa:</strong> PBKDF2 (100k) + AES-GCM</li>
+                                <li><strong>Tham số nhóm:</strong> RFC 3526 MODP 2048-bit</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                </div>
+            </aside>
+        </div>
+
+        <!-- ================= MODAL: CRYPTO INSPECTOR (KÍNH LÚP MẬT MÃ) ================= -->
+        <div id="inspector-modal" class="msg-modal-overlay" style="display: none;">
+            <div class="msg-modal-card modal-lg">
+                <div class="modal-top">
+                    <div class="modal-title-wrap">
+                        <i class="fas fa-microscope modal-icon"></i>
+                        <div>
+                            <h3>Kính Lúp Mật Mã (Cryptographic Inspector)</h3>
+                            <p class="modal-sub">Giải phẫu chi tiết toàn bộ các tầng toán học của phong bì tin nhắn</p>
+                        </div>
+                    </div>
+                    <button class="modal-close-btn" onclick="closeInspector()">✖</button>
+                </div>
+
+                <div class="inspector-scroll-area" id="inspector-body">
+                    <!-- Populated dynamically -->
+                </div>
+
+                <div class="modal-actions">
+                    <button class="msg-btn msg-btn-secondary" onclick="closeInspector()">Đóng</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: CONTACT VERIFICATION ================= -->
+        <div id="verify-modal" class="msg-modal-overlay" style="display: none;">
+            <div class="msg-modal-card">
+                <div class="modal-top">
+                    <div class="modal-title-wrap">
+                        <i class="fas fa-shield-check modal-icon"></i>
+                        <div>
+                            <h3>Đối Chiếu Khóa Công Khai &amp; Vân Tay</h3>
+                            <p class="modal-sub">Xác minh danh tính qua kênh độc lập chống Man-in-the-Middle</p>
+                        </div>
+                    </div>
+                    <button class="modal-close-btn" onclick="closeVerifyModal()">✖</button>
+                </div>
+
+                <div id="verify-modal-content" class="verify-content">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div class="modal-actions">
+                    <button class="msg-btn msg-btn-primary" onclick="closeVerifyModal()">Đã Xác Minh Khớp</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: THEORY DEMO LAB ================= -->
+        <div id="theory-modal" class="msg-modal-overlay" style="display: none;">
+            <div class="msg-modal-card modal-lg">
+                <div class="modal-top">
+                    <div class="modal-title-wrap">
+                        <i class="fas fa-book-reader modal-icon"></i>
+                        <div>
+                            <h3>Phòng Thực Nghiệm Lý Thuyết Mật Mã</h3>
+                            <p class="modal-sub">Mô phỏng từng bước các ví dụ tính toán số học từ Chương 1 &amp; Chương 3</p>
+                        </div>
+                    </div>
+                    <button class="modal-close-btn" onclick="closeTheoryModal()">✖</button>
+                </div>
+
+                <div class="theory-nav-bar">
+                    <button class="theory-nav-btn active" id="btn-theory-enc" onclick="loadTheoryDemo('encrypt')">
+                        Ví Dụ Chương 1: Mã Hóa &amp; Giải Mã ElGamal (p=23, g=5, m=10)
+                    </button>
+                    <button class="theory-nav-btn" id="btn-theory-sig" onclick="loadTheoryDemo('signature')">
+                        Ví Dụ Chương 3: Chữ Ký Số ElGamal–SHA256 (p=23, g=5, h=13)
+                    </button>
+                </div>
+
+                <div class="theory-body-area">
+                    <div class="theory-params-card" id="theory-params"></div>
+                    <div class="table-responsive">
+                        <table class="theory-table">
+                            <thead>
+                                <tr>
+                                    <th>Bước</th>
+                                    <th>Thao Tác</th>
+                                    <th>Công Thức Toán Học</th>
+                                    <th>Kết Quả</th>
+                                </tr>
+                            </thead>
+                            <tbody id="theory-steps-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="msg-btn msg-btn-secondary" onclick="closeTheoryModal()">Đóng</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: KEY MANAGEMENT FULL ================= -->
+        <div id="key-mgmt-modal" class="msg-modal-overlay" style="display: none;">
+            <div class="msg-modal-card modal-lg">
+                <div class="modal-top">
+                    <div class="modal-title-wrap">
+                        <i class="fas fa-key modal-icon"></i>
+                        <div>
+                            <h3>Quản Lý Khóa &amp; Két Sắt Keystore (Chương 5)</h3>
+                            <p class="modal-sub">Chi tiết khóa ElGamal cá nhân, dấu vân tay và sao lưu PBKDF2</p>
+                        </div>
+                    </div>
+                    <button class="modal-close-btn" onclick="closeKeyMgmtModal()">✖</button>
+                </div>
+
+                <div class="key-mgmt-content">
+                    <div class="km-grid">
+                        <div class="km-card">
+                            <h4>Thông Tin Bộ Khóa</h4>
+                            <p><strong>Người sở hữu:</strong> <span id="km-userid">--</span></p>
+                            <p><strong>Mã Key ID:</strong> <span class="mono-inline" id="km-keyid">--</span></p>
+                            <p><strong>Thời gian tạo:</strong> <span id="km-created">--</span></p>
+                            <p><strong>Dấu vân tay kết hợp:</strong></p>
+                            <div class="mono-box" id="km-comb-fp">--</div>
+                        </div>
+
+                        <div class="km-card">
+                            <h4>Sao Lưu Keystore (PBKDF2 + AES-GCM)</h4>
+                            <div class="form-field">
+                                <label>Mật khẩu xuất file:</label>
+                                <input type="password" id="export-passphrase" class="msg-input" placeholder="Nhập mật khẩu tự đặt...">
+                            </div>
+                            <button class="msg-btn msg-btn-primary" id="btn-export-keystore-modal">
+                                <i class="fas fa-download"></i> Tải Về Tệp Keystore (.json)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="km-card" style="margin-top: 15px;">
+                        <h4>Thành Phần Khóa Công Khai (Public Key Components)</h4>
+                        <div class="km-grid">
+                            <div>
+                                <p><strong>Khóa mã hóa (y_enc = g^x mod p):</strong></p>
+                                <div class="mono-box break-all" id="km-enc-y">--</div>
+                            </div>
+                            <div>
+                                <p><strong>Khóa chữ ký (y_sig = g^x_sig mod p):</strong></p>
+                                <div class="mono-box break-all" id="km-sig-y">--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="msg-btn msg-btn-secondary" onclick="closeKeyMgmtModal()">Đóng</button>
+                </div>
+        <!-- ================= MODAL: CHANGE AVATAR ================= -->
+        <div id="avatar-modal" class="msg-modal-overlay" style="display: none;">
+            <div class="msg-modal-card">
+                <div class="modal-top">
+                    <div class="modal-title-wrap">
+                        <i class="fas fa-camera modal-icon"></i>
+                        <div>
+                            <h3>Đổi Ảnh Đại Diện (Avatar)</h3>
+                            <p class="modal-sub">Chọn avatar có sẵn hoặc tải ảnh riêng từ máy tính của bạn</p>
+                        </div>
+                    </div>
+                    <button class="modal-close-btn" onclick="closeAvatarModal()">✖</button>
+                </div>
+
+                <div class="avatar-modal-body">
+                    <!-- PREVIEW -->
+                    <div class="avatar-preview-wrap">
+                        <div class="avatar avatar-lg" id="avatar-live-preview" style="background: var(--msg-gradient);">
+                            <span id="avatar-preview-letter">A</span>
+                        </div>
+                        <p class="small-desc" style="margin-top: 6px;">Xem trước ảnh đại diện</p>
+                    </div>
+
+                    <!-- PRESETS -->
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--msg-text);">Chọn phong cách có sẵn:</label>
+                    <div class="avatar-grid" id="avatar-presets-grid">
+                        <!-- Populated dynamically with cool avatars -->
+                    </div>
+
+                    <div style="text-align: center; margin: 12px 0; color: var(--msg-text-muted); font-size: 0.8rem;">
+                        ── HOẶC TẢI ẢNH LÊN ──
+                    </div>
+
+                    <!-- CUSTOM FILE UPLOAD -->
+                    <div class="form-field">
+                        <label>Tải ảnh từ máy tính (PNG / JPG / GIF):</label>
+                        <input type="file" id="custom-avatar-file" accept="image/*" class="file-input" onchange="handleCustomAvatarUpload(event)">
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="msg-btn msg-btn-secondary" onclick="closeAvatarModal()">Hủy</button>
+                    <button class="msg-btn msg-btn-primary" id="btn-save-avatar" onclick="saveSelectedAvatar()">
+                        <i class="fas fa-check"></i> Lưu Ảnh Đại Diện
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: ADD FRIEND ================= -->
+        <div id="add-friend-modal" class="msg-modal-overlay" style="display: none;">
+            <div class="msg-modal-card">
+                <div class="modal-top">
+                    <div class="modal-title-wrap">
+                        <i class="fas fa-user-plus modal-icon"></i>
+                        <div>
+                            <h3>Thêm Bạn Bè Mới</h3>
+                            <p class="modal-sub">Nhập tên tài khoản của người dùng bạn muốn kết bạn</p>
+                        </div>
+                    </div>
+                    <button class="modal-close-btn" onclick="closeAddFriendModal()">✖</button>
+                </div>
+
+                <div style="padding: 10px 0;">
+                    <div class="form-field">
+                        <label>Tên tài khoản (Username):</label>
+                        <div class="input-icon-wrap">
+                            <i class="fas fa-user"></i>
+                            <input type="text" id="add-friend-input" class="msg-input" placeholder="Ví dụ: Bob, ricon, alice...">
+                        </div>
+                    </div>
+                    <p class="small-desc" style="color: var(--msg-text-muted); font-size: 0.8rem;">
+                        <i class="fas fa-info-circle"></i> Người dùng phải đăng ký tài khoản trên hệ thống để bạn có thể kết bạn và mã hóa E2EE.
+                    </p>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="msg-btn msg-btn-secondary" onclick="closeAddFriendModal()">Hủy</button>
+                    <button class="msg-btn msg-btn-primary" onclick="submitAddFriend()">
+                        <i class="fas fa-user-check"></i> Kết Bạn
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: MONGODB BACKUP & VAULT ================= -->
+        <div id="mongodb-modal" class="msg-modal-overlay" style="display: none;">
+            <div class="msg-modal-card" style="max-width: 520px;">
+                <div class="modal-top">
+                    <div class="modal-title-wrap">
+                        <i class="fas fa-database modal-icon" style="color: #10b981;"></i>
+                        <div>
+                            <h3>Sao Lưu Cơ Sở Dữ Liệu MongoDB</h3>
+                            <p class="modal-sub">Lưu trữ tài khoản, dấu vân tay khóa và lịch sử tin nhắn E2EE</p>
+                        </div>
+                    </div>
+                    <button class="modal-close-btn" onclick="closeMongoModal()">✖</button>
+                </div>
+
+                <div class="modal-body-content" style="padding: 10px 0;">
+                    <!-- STATUS BANNER -->
+                    <div class="mongo-banner" id="mongo-modal-banner">
+                        <div class="mongo-banner-icon"><i class="fas fa-server"></i></div>
+                        <div>
+                            <strong id="mongo-modal-status-title">Đang kiểm tra kết nối...</strong>
+                            <p id="mongo-modal-status-desc">Hệ thống đang gửi tín hiệu ping tới MongoDB server.</p>
+                        </div>
+                    </div>
+
+                    <!-- STATS GRID -->
+                    <div class="km-grid" style="margin: 14px 0;">
+                        <div class="km-card" style="text-align: center;">
+                            <h4 style="margin-bottom: 2px;"><i class="fas fa-users"></i> Tài Khoản</h4>
+                            <div style="font-size: 1.5rem; font-weight: 800; color: var(--msg-blue);" id="mongo-stat-users">0</div>
+                            <span style="font-size: 0.7rem; color: var(--msg-text-muted);">đã sao lưu trong `users`</span>
+                        </div>
+                        <div class="km-card" style="text-align: center;">
+                            <h4 style="margin-bottom: 2px;"><i class="fas fa-shield-alt"></i> Tin Nhắn E2EE</h4>
+                            <div style="font-size: 1.5rem; font-weight: 800; color: #10b981;" id="mongo-stat-messages">0</div>
+                            <span style="font-size: 0.7rem; color: var(--msg-text-muted);">đã sao lưu trong `messages`</span>
+                        </div>
+                    </div>
+
+                    <!-- CONNECTION FORM -->
+                    <div class="form-field">
+                        <label>Chuỗi kết nối (Connection String):</label>
+                        <div class="input-icon-wrap">
+                            <i class="fas fa-link"></i>
+                            <input type="text" id="mongo-input-connstr" class="msg-input" placeholder="mongodb://localhost:27017">
+                        </div>
+                        <small style="color: var(--msg-text-muted); font-size: 0.74rem;">Hỗ trợ cả MongoDB cục bộ (Localhost) hoặc MongoDB Atlas Cloud (`mongodb+srv://...`).</small>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Tên Database:</label>
+                        <div class="input-icon-wrap">
+                            <i class="fas fa-folder"></i>
+                            <input type="text" id="mongo-input-dbname" class="msg-input" placeholder="RiTetsuyaDb">
+                        </div>
+                    </div>
+
+                    <!-- ZERO KNOWLEDGE NOTE -->
+                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 10px 12px; margin-top: 10px; font-size: 0.78rem; line-height: 1.4; color: var(--msg-text);">
+                        <i class="fas fa-lock" style="color: #10b981;"></i> <strong>Bảo Mật Zero-Knowledge:</strong> Dữ liệu tin nhắn lưu trên MongoDB chỉ là bản mã Ciphertext AES-256-GCM, Khóa phiên bọc ElGamal và Chữ ký số. Server và Database <em>không bao giờ</em> lưu bản rõ tin nhắn của bạn!
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="msg-btn msg-btn-secondary" onclick="closeMongoModal()">Đóng</button>
+                    <button class="msg-btn msg-btn-primary" onclick="saveMongoConfig()">
+                        <i class="fas fa-sync-alt"></i> Kiểm Tra &amp; Lưu Cấu Hình
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

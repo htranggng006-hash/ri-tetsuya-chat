@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SecureChat.Core/SecureChat.Core.csproj" />
+    <Project Path="src/SecureChat.Server/SecureChat.Server.csproj" />
+    <Project Path="src/SecureChat.WpfClient/SecureChat.WpfClient.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SecureChat.Tests/SecureChat.Tests.csproj" />
+  </Folder>
+</Solution>
