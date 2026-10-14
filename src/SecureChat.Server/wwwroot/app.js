@@ -71,7 +71,124 @@ window.switchAuthTab = function(tab) {
     }
 };
 
-document.addEventListener("DOMContentLoaded", () => {
+// ==========================================================================
+// SESSION PERSISTENCE (REMEMBER ME / AUTO-LOGIN)
+// ==========================================================================
+const SESSION_KEY = "ritetsuya_chat_session";
+
+function saveSession(username, password, remember) {
+    try {
+        const sessionData = JSON.stringify({ username, password, remember });
+        if (remember) {
+            localStorage.setItem(SESSION_KEY, sessionData);
+            sessionStorage.removeItem(SESSION_KEY);
+        } else {
+            sessionStorage.setItem(SESSION_KEY, sessionData);
+            localStorage.removeItem(SESSION_KEY);
+        }
+    } catch (e) {
+        console.warn("Lỗi lưu session:", e);
+    }
+}
+
+function clearSession() {
+    try {
+        localStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(SESSION_KEY);
+    } catch (e) {
+        console.warn("Lỗi xóa session:", e);
+    }
+}
+
+function getStoredSession() {
+    try {
+        const s = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+        return s ? JSON.parse(s) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function checkAutoLogin() {
+    const session = getStoredSession();
+    if (!session || !session.username || !session.password) {
+        return false;
+    }
+
+    const uField = document.getElementById("login-username");
+    const pField = document.getElementById("login-password");
+    if (uField) uField.value = session.username;
+    if (pField) pField.value = session.password;
+    const rField = document.getElementById("login-remember-me");
+    if (rField) rField.checked = !!session.remember;
+
+    showLoading(true, `Đang khôi phục phiên đăng nhập cho '${session.username}'...`);
+    try {
+        const resp = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: session.username, password: session.password })
+        });
+
+        if (!resp.ok) {
+            clearSession();
+            showLoading(false);
+            return false;
+        }
+
+        const keyBundle = await resp.json();
+        currentUser = keyBundle;
+        currentUser.passphrase = session.password;
+
+        await connectSignalR(keyBundle);
+        finishLogin();
+        return true;
+    } catch (err) {
+        console.warn("Auto-login failed:", err);
+        showLoading(false);
+        return false;
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ==========================================================================
+// MOBILE & RESPONSIVE UI HELPERS
+// ==========================================================================
+
+window.backToContactList = function() {
+    const workspace = document.getElementById("main-workspace");
+    if (workspace) {
+        workspace.classList.remove("mobile-chat-open");
+    }
+    window.toggleInfoPanel(false);
+};
+
+window.toggleAttackBar = function(force) {
+    const bar = document.getElementById("attack-toolbar");
+    if (!bar) return;
+    const isHidden = bar.style.display === "none" || !bar.style.display;
+    const show = force !== undefined ? force : isHidden;
+    bar.style.display = show ? "flex" : "none";
+};
+
+window.toggleInfoPanel = function(force) {
+    const panel = document.getElementById("msg-info-panel");
+    const backdrop = document.getElementById("info-panel-backdrop");
+    if (!panel) return;
+
+    const isMobile = window.innerWidth <= 1024;
+    if (isMobile) {
+        const willOpen = force !== undefined ? force : !panel.classList.contains("open");
+        panel.classList.toggle("open", willOpen);
+        if (backdrop) backdrop.classList.toggle("active", willOpen);
+    } else {
+        const willCollapse = force !== undefined ? !force : !panel.classList.contains("collapsed");
+        panel.classList.toggle("collapsed", willCollapse);
+    }
+};
+
+document.addEventListener("DOMContentLoaded", async () => {
     initTheme();
     setupAuthHandlers();
     setupChatComposer();
@@ -85,6 +202,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.addEventListener("click", () => {
         document.querySelectorAll(".msg-action-menu").forEach(m => m.style.display = "none");
     });
+
+    // Check Auto-login on load (Remember Me)
+    await checkAutoLogin();
 });
 
 // ==========================================================================
@@ -162,6 +282,9 @@ function setupAuthHandlers() {
             currentUser = keyBundle;
             currentUser.passphrase = password;
 
+            const rememberMe = document.getElementById("reg-remember-me")?.checked ?? true;
+            saveSession(username, password, rememberMe);
+
             await connectSignalR(keyBundle);
             finishLogin();
         } catch (err) {
@@ -195,6 +318,9 @@ function setupAuthHandlers() {
             const keyBundle = await resp.json();
             currentUser = keyBundle;
             currentUser.passphrase = password;
+
+            const rememberMe = document.getElementById("login-remember-me")?.checked ?? true;
+            saveSession(username, password, rememberMe);
 
             await connectSignalR(keyBundle);
             finishLogin();
@@ -231,6 +357,8 @@ function setupAuthHandlers() {
             currentUser = keyBundle;
             currentUser.passphrase = password;
 
+            saveSession(keyBundle.userId, password, true);
+
             await connectSignalR(keyBundle);
             finishLogin();
         } catch (err) {
@@ -241,6 +369,7 @@ function setupAuthHandlers() {
     });
 
     btnLogout.addEventListener("click", () => {
+        clearSession();
         if (hubConnection) hubConnection.stop();
         location.reload();
     });
@@ -744,6 +873,12 @@ function selectRecipient(userId) {
     renderChatHistory();
     // Non-blocking background history load
     loadChatHistoryFromMongo(userId);
+
+    // Mobile view switch: open chat thread
+    const workspace = document.getElementById("main-workspace");
+    if (workspace) {
+        workspace.classList.add("mobile-chat-open");
+    }
 }
 
 function updateRecipientHeader() {
@@ -1191,18 +1326,20 @@ window.closeInspector = function() {
 
 function setupRightPanel() {
     const toggleBtn = document.getElementById("btn-toggle-info-panel");
-    const panel = document.getElementById("msg-info-panel");
     const exportBtn = document.getElementById("btn-export-keystore-panel");
     const rotateBtn = document.getElementById("btn-rotate-keys-panel");
 
-    toggleBtn.addEventListener("click", () => {
-        panel.classList.toggle("collapsed");
-    });
+    if (toggleBtn) {
+        toggleBtn.addEventListener("click", () => {
+            window.toggleInfoPanel();
+        });
+    }
 
-    exportBtn.addEventListener("click", () => exportKeystoreAction());
-    rotateBtn.addEventListener("click", () => rotateKeysAction());
+    if (exportBtn) exportBtn.addEventListener("click", () => exportKeystoreAction());
+    if (rotateBtn) rotateBtn.addEventListener("click", () => rotateKeysAction());
 
-    document.getElementById("btn-export-keystore-modal").addEventListener("click", () => exportKeystoreAction());
+    const modalExportBtn = document.getElementById("btn-export-keystore-modal");
+    if (modalExportBtn) modalExportBtn.addEventListener("click", () => exportKeystoreAction());
 }
 
 window.toggleAccordion = function(bodyId) {

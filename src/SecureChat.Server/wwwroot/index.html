@@ -63,6 +63,13 @@
                         </div>
                     </div>
 
+                    <div class="form-field-checkbox">
+                        <label class="remember-checkbox-label">
+                            <input type="checkbox" id="reg-remember-me" checked>
+                            <span>Ghi nhớ đăng nhập (Không bị đăng xuất khi tải lại trang)</span>
+                        </label>
+                    </div>
+
                     <button class="msg-btn msg-btn-primary" id="btn-submit-register">
                         <i class="fas fa-shield-alt"></i> Đăng Ký Tài Khoản
                     </button>
@@ -84,6 +91,13 @@
                             <i class="fas fa-lock"></i>
                             <input type="password" id="login-password" class="msg-input" placeholder="Nhập mật khẩu...">
                         </div>
+                    </div>
+
+                    <div class="form-field-checkbox">
+                        <label class="remember-checkbox-label">
+                            <input type="checkbox" id="login-remember-me" checked>
+                            <span>Ghi nhớ đăng nhập (Không bị đăng xuất khi tải lại trang)</span>
+                        </label>
                     </div>
 
                     <button class="msg-btn msg-btn-primary" id="btn-submit-login">
@@ -182,13 +196,16 @@
                     <!-- Populated by JS -->
                 </div>
 
-                <!-- MY FINGERPRINT CARD AT BOTTOM -->
-                <div class="my-fingerprint-box">
-                    <div class="fp-header">
-                        <i class="fas fa-fingerprint"></i> Dấu vân tay của bạn (SHA-256):
+                <!-- MY FINGERPRINT CARD AT BOTTOM (SLEEK & COMPACT) -->
+                <div class="my-fingerprint-compact" onclick="openKeyMgmtModal()" title="Nhấp để xem chi tiết dấu vân tay & quản lý bộ khóa">
+                    <div class="fp-compact-left">
+                        <i class="fas fa-fingerprint"></i>
+                        <div class="fp-compact-info">
+                            <span class="fp-compact-label">Vân tay khóa SHA-256</span>
+                            <span class="fp-compact-val" id="my-fingerprint-display">--</span>
+                        </div>
                     </div>
-                    <div class="fp-text" id="my-fingerprint-display">--</div>
-                    <div class="fp-desc">Dùng để bạn bè đối chiếu out-of-band chống MITM (Chương 5.3)</div>
+                    <i class="fas fa-chevron-right fp-compact-arrow"></i>
                 </div>
             </aside>
 
@@ -197,9 +214,12 @@
                 
                 <!-- CHAT TOP BAR -->
                 <header class="chat-navbar">
-                    <div class="chat-navbar-user">
+                    <button class="icon-btn btn-mobile-back" id="btn-back-to-contacts" onclick="backToContactList()" title="Quay lại danh sách chat">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <div class="chat-navbar-user" onclick="toggleInfoPanel()">
                         <div class="avatar avatar-sm recipient-avatar-circle" id="active-recipient-avatar">?</div>
-                        <div>
+                        <div class="chat-navbar-info">
                             <h3 id="current-recipient-name">Chọn một đoạn chat</h3>
                             <p class="status-subtext" id="current-recipient-status">
                                 <span class="lock-icon"><i class="fas fa-lock"></i></span> Đoạn chat được mã hóa đầu cuối ElGamal–AES
@@ -207,6 +227,9 @@
                         </div>
                     </div>
                     <div class="chat-navbar-actions">
+                        <button class="icon-btn" title="Thử nghiệm bảo mật & Giả mạo (Lab)" id="btn-toggle-attack-bar" onclick="toggleAttackBar()">
+                            <i class="fas fa-shield-virus"></i>
+                        </button>
                         <button class="icon-btn" title="Đối chiếu dấu vân tay khóa" id="btn-verify-contact" style="display: none;">
                             <i class="fas fa-shield-alt"></i>
                         </button>
@@ -216,25 +239,28 @@
                     </div>
                 </header>
 
-                <!-- ATTACK SIMULATOR TOOLBAR (Messenger Shortcuts) -->
-                <div class="attack-toolbar">
-                    <span class="attack-label"><i class="fas fa-bolt"></i> Thử nghiệm an toàn:</span>
+                <!-- ATTACK SIMULATOR TOOLBAR (Collapsed by default for a clean, distraction-free chat) -->
+                <div class="attack-toolbar" id="attack-toolbar" style="display: none;">
+                    <span class="attack-label"><i class="fas fa-bolt"></i> Thử nghiệm:</span>
                     <label class="attack-pill">
                         <input type="radio" name="send-mode" value="normal" checked>
                         <span><i class="fas fa-check-shield"></i> Chuẩn E2EE</span>
                     </label>
                     <label class="attack-pill attack-pill-warn">
                         <input type="radio" name="send-mode" value="tamper-cipher">
-                        <span><i class="fas fa-bug"></i> Giả mạo Ciphertext</span>
+                        <span><i class="fas fa-bug"></i> Sửa Ciphertext</span>
                     </label>
                     <label class="attack-pill attack-pill-warn">
                         <input type="radio" name="send-mode" value="tamper-sig">
-                        <span><i class="fas fa-file-signature"></i> Giả mạo Chữ ký (r,s)</span>
+                        <span><i class="fas fa-file-signature"></i> Sửa Chữ ký</span>
                     </label>
                     <label class="attack-pill attack-pill-warn">
                         <input type="radio" name="send-mode" value="tamper-sender">
-                        <span><i class="fas fa-mask"></i> Giả mạo Người gửi (AAD)</span>
+                        <span><i class="fas fa-mask"></i> Giả mạo AAD</span>
                     </label>
+                    <button class="attack-close-btn" onclick="toggleAttackBar(false)" title="Đóng thanh thử nghiệm">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
 
                 <!-- MESSAGES THREAD -->
@@ -272,6 +298,14 @@
             <aside class="msg-info-panel" id="msg-info-panel">
                 <div class="info-panel-content">
                     
+                    <!-- MOBILE CLOSE BAR -->
+                    <div class="mobile-info-top">
+                        <span>Chi tiết trò chuyện</span>
+                        <button class="icon-btn" onclick="toggleInfoPanel(false)" title="Đóng thông tin">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
                     <!-- USER DETAILS PROFILE -->
                     <div class="info-profile-section">
                         <div class="avatar avatar-lg recipient-avatar-circle" id="info-panel-avatar">?</div>
@@ -372,6 +406,9 @@
 
                 </div>
             </aside>
+
+            <!-- BACKDROP FOR MOBILE INFO DRAWER -->
+            <div class="info-panel-backdrop" id="info-panel-backdrop" onclick="toggleInfoPanel(false)"></div>
         </div>
 
         <!-- ================= MODAL: CRYPTO INSPECTOR (KÍNH LÚP MẬT MÃ) ================= -->

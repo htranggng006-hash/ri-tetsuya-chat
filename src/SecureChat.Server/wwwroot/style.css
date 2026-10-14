@@ -753,42 +753,72 @@ body.messenger-light .conversation-item.active {
     color: var(--msg-blue);
 }
 
-/* MY FINGERPRINT CARD (BOTTOM SIDEBAR) */
-.my-fingerprint-box {
-    padding: 12px 16px;
+/* MY FINGERPRINT CARD (BOTTOM SIDEBAR - SLEEK & COMPACT) */
+.my-fingerprint-compact {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 16px;
     background: var(--msg-card);
     border-top: 1px solid var(--msg-border);
+    cursor: pointer;
+    transition: all 0.2s ease;
     flex-shrink: 0;
 }
 
-.fp-header {
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: var(--msg-blue);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+.my-fingerprint-compact:hover {
+    background: var(--msg-card-hover);
+}
+
+.fp-compact-left {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
 }
 
-.fp-text {
-    font-family: var(--font-mono);
-    font-size: 0.74rem;
-    color: var(--msg-text);
-    word-break: break-all;
-    line-height: 1.35;
-    background: var(--msg-input-bg);
-    padding: 6px 8px;
-    border-radius: 6px;
-    border: 1px solid var(--msg-border);
+.my-fingerprint-compact i.fa-fingerprint {
+    font-size: 1.25rem;
+    color: var(--msg-blue);
+    flex-shrink: 0;
 }
 
-.fp-desc {
+.fp-compact-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.fp-compact-label {
     font-size: 0.68rem;
+    text-transform: uppercase;
+    font-weight: 700;
     color: var(--msg-text-muted);
-    margin-top: 4px;
+    letter-spacing: 0.04em;
+}
+
+.fp-compact-val {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--msg-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}
+
+.fp-compact-arrow {
+    font-size: 0.8rem;
+    color: var(--msg-text-muted);
+    margin-left: 8px;
+    transition: transform 0.2s;
+}
+
+.my-fingerprint-compact:hover .fp-compact-arrow {
+    transform: translateX(2px);
+    color: var(--msg-blue);
 }
 
 /* ==========================================================================
@@ -1763,4 +1793,312 @@ body.messenger-light .msg-modal-card {
 @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   FORM CHECKBOXES & REMEMBER ME
+   ========================================================================== */
+
+.form-field-checkbox {
+    margin: -4px 0 16px 0;
+}
+
+.remember-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: var(--msg-text-muted);
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s ease;
+}
+
+.remember-checkbox-label:hover {
+    color: var(--msg-text);
+}
+
+.remember-checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--msg-blue);
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+/* ==========================================================================
+   NAVIGATION & MOBILE CONTROLS
+   ========================================================================== */
+
+.btn-mobile-back {
+    display: none;
+    margin-right: 6px;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.chat-navbar-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.attack-close-btn {
+    background: none;
+    border: none;
+    color: var(--msg-text-muted);
+    cursor: pointer;
+    margin-left: auto;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s;
+}
+
+.attack-close-btn:hover {
+    color: var(--msg-text);
+    background: var(--msg-input-bg);
+}
+
+.mobile-info-top {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--msg-border);
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--msg-text);
+}
+
+.info-panel-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(3px);
+    z-index: 80;
+    animation: fadeIn 0.2s ease;
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN: TABLETS & MOBILE PHONES
+   ========================================================================== */
+
+/* Tablet & Smaller Desktops */
+@media (max-width: 1024px) {
+    .msg-sidebar {
+        width: 300px;
+        min-width: 280px;
+    }
+
+    .msg-info-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 340px;
+        max-width: 86vw;
+        z-index: 90;
+        box-shadow: -8px 0 36px rgba(0, 0, 0, 0.45);
+        transform: translateX(100%);
+        transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .msg-info-panel.open {
+        transform: translateX(0);
+    }
+
+    .info-panel-backdrop.active {
+        display: block;
+    }
+
+    .mobile-info-top {
+        display: flex;
+    }
+}
+
+/* Mobile Phones (iPhone, Android) */
+@media (max-width: 768px) {
+    /* Safe Area & Mobile Full Height */
+    body.messenger-dark,
+    body.messenger-light,
+    .messenger-app,
+    .messenger-workspace {
+        height: 100dvh;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    /* By default on mobile: Show Sidebar full width */
+    .msg-sidebar {
+        width: 100%;
+        min-width: 100%;
+        max-width: 100%;
+        border-right: none;
+        display: flex;
+    }
+
+    /* Hide chat pane until a conversation is opened */
+    .msg-chat-pane {
+        display: none;
+        width: 100%;
+        height: 100%;
+    }
+
+    /* When conversation is selected on mobile */
+    .messenger-workspace.mobile-chat-open .msg-sidebar {
+        display: none !important;
+    }
+
+    .messenger-workspace.mobile-chat-open .msg-chat-pane {
+        display: flex !important;
+        width: 100% !important;
+    }
+
+    .btn-mobile-back {
+        display: inline-flex;
+    }
+
+    /* Compact Mobile Navbar */
+    .chat-navbar {
+        padding: 10px 14px;
+        gap: 8px;
+    }
+
+    .chat-navbar-user {
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .chat-navbar-info h3 {
+        font-size: 0.94rem;
+        max-width: 150px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .status-subtext {
+        font-size: 0.65rem;
+    }
+
+    .chat-navbar-actions {
+        gap: 4px;
+    }
+
+    .chat-navbar-actions .icon-btn {
+        width: 34px;
+        height: 34px;
+        font-size: 0.85rem;
+    }
+
+    /* Chat Thread */
+    .chat-thread {
+        padding: 14px 12px;
+        gap: 5px;
+    }
+
+    .chat-welcome-notice {
+        margin: 20px 12px;
+        padding: 18px 14px;
+    }
+
+    .welcome-app-logo {
+        width: 68px;
+    }
+
+    .chat-welcome-notice h3 {
+        font-size: 1.05rem;
+    }
+
+    .chat-welcome-notice p {
+        font-size: 0.8rem;
+    }
+
+    .msg-bubble {
+        max-width: 86%;
+        padding: 9px 13px;
+        font-size: 0.9rem;
+    }
+
+    /* Mobile Composer */
+    .chat-composer-area {
+        padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)) 10px;
+    }
+
+    .composer-container {
+        gap: 6px;
+    }
+
+    .composer-action-btn {
+        width: 36px;
+        height: 36px;
+        font-size: 0.95rem;
+    }
+
+    .composer-input-pill {
+        padding: 4px 10px;
+    }
+
+    .composer-input-pill input {
+        font-size: 0.9rem;
+    }
+
+    .emoji-btn {
+        font-size: 0.95rem;
+        padding: 2px 3px;
+    }
+
+    .composer-send-btn {
+        width: 38px;
+        height: 38px;
+        font-size: 0.9rem;
+    }
+
+    /* Sidebar Profile Header on Mobile */
+    .msg-sidebar-header {
+        padding: 12px 14px;
+    }
+
+    .profile-info h3 {
+        font-size: 0.92rem;
+    }
+
+    .app-brand-chip {
+        font-size: 0.65rem;
+        padding: 1px 6px;
+    }
+
+    /* Mobile Auth Card */
+    .auth-card {
+        width: 92%;
+        max-width: 380px;
+        padding: 22px 18px;
+        border-radius: var(--radius-md);
+    }
+
+    .app-brand-logo {
+        width: 58px;
+    }
+
+    .auth-brand h2 {
+        font-size: 1.35rem;
+    }
+
+    .auth-desc {
+        font-size: 0.78rem;
+    }
+
+    .msg-modal-card {
+        width: 95%;
+        padding: 18px 14px;
+    }
+
+    .km-grid {
+        grid-template-columns: 1fr;
+    }
 }
