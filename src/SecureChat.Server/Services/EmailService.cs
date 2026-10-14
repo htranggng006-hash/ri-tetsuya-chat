@@ -29,8 +29,8 @@ public class EmailService
     /// </summary>
     public string GetConfiguredProvider()
     {
-        if (!string.IsNullOrEmpty(GetApiKey("RESEND_API_KEY"))) return "Resend";
         if (!string.IsNullOrEmpty(GetApiKey("BREVO_API_KEY"))) return "Brevo";
+        if (!string.IsNullOrEmpty(GetApiKey("RESEND_API_KEY"))) return "Resend";
         if (!string.IsNullOrEmpty(GetApiKey("SENDGRID_API_KEY"))) return "SendGrid";
         if (!string.IsNullOrEmpty(GetApiKey("SMTP_PASS"))) return "SMTP";
         return "None";
@@ -124,8 +124,16 @@ public class EmailService
     private async Task SendViaBrevoAsync(string toEmail, string username, string subject, string htmlBody)
     {
         string apiKey = GetApiKey("BREVO_API_KEY")!;
-        string senderEmail = GetApiKey("EMAIL_FROM") ?? "noreply@ritetsuya.chat";
-        string senderName = "Ri Tetsuya Secure Chat";
+        string senderEmail = GetApiKey("BREVO_SENDER_EMAIL") 
+            ?? GetApiKey("EMAIL_FROM") 
+            ?? "";
+
+        if (string.IsNullOrWhiteSpace(senderEmail))
+        {
+            throw new InvalidOperationException("Brevo yêu cầu cài đặt biến môi trường 'BREVO_SENDER_EMAIL' (nhập chính địa chỉ email bạn đã dùng để đăng ký tài khoản Brevo).");
+        }
+
+        string senderName = GetApiKey("BREVO_SENDER_NAME") ?? "Ri Tetsuya Secure Chat";
 
         var payload = new
         {
@@ -140,6 +148,7 @@ public class EmailService
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         };
         request.Headers.Add("api-key", apiKey);
+        request.Headers.Add("accept", "application/json");
 
         var response = await _httpClient.SendAsync(request);
         string responseContent = await response.Content.ReadAsStringAsync();
