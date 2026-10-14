@@ -38,9 +38,10 @@ public class EmailService
 
     private string? GetApiKey(string keyName)
     {
-        return Environment.GetEnvironmentVariable(keyName) 
+        var val = Environment.GetEnvironmentVariable(keyName) 
             ?? _config[keyName] 
             ?? _config[$"Email:{keyName}"];
+        return val?.Trim();
     }
 
     /// <summary>
@@ -123,22 +124,27 @@ public class EmailService
 
     private async Task SendViaBrevoAsync(string toEmail, string username, string subject, string htmlBody)
     {
-        string apiKey = GetApiKey("BREVO_API_KEY")!;
-        string senderEmail = GetApiKey("BREVO_SENDER_EMAIL") 
-            ?? GetApiKey("EMAIL_FROM") 
-            ?? "";
+        string apiKey = GetApiKey("BREVO_API_KEY")?.Trim() ?? "";
+        string senderEmail = (GetApiKey("BREVO_SENDER_EMAIL") ?? GetApiKey("EMAIL_FROM") ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException("Chưa tìm thấy biến môi trường 'BREVO_API_KEY' trên Render.");
+        }
 
         if (string.IsNullOrWhiteSpace(senderEmail))
         {
             throw new InvalidOperationException("Brevo yêu cầu cài đặt biến môi trường 'BREVO_SENDER_EMAIL' (nhập chính địa chỉ email bạn đã dùng để đăng ký tài khoản Brevo).");
         }
 
-        string senderName = GetApiKey("BREVO_SENDER_NAME") ?? "Ri Tetsuya Secure Chat";
+        string senderName = (GetApiKey("BREVO_SENDER_NAME") ?? "Ri Tetsuya Secure Chat").Trim();
+        string cleanToEmail = toEmail.Trim();
+        string cleanUsername = string.IsNullOrWhiteSpace(username) ? "User" : username.Trim();
 
         var payload = new
         {
             sender = new { name = senderName, email = senderEmail },
-            to = new[] { new { email = toEmail, name = username } },
+            to = new[] { new { email = cleanToEmail, name = cleanUsername } },
             subject = subject,
             htmlContent = htmlBody
         };
@@ -155,7 +161,16 @@ public class EmailService
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"Brevo API Error ({response.StatusCode}): {responseContent}");
+            string friendlyReason = responseContent;
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                friendlyReason = "BREVO_API_KEY không hợp lệ hoặc đã bị vô hiệu hóa trong tài khoản Brevo.";
+            }
+            else if (responseContent.Contains("sender", StringComparison.OrdinalIgnoreCase))
+            {
+                friendlyReason = $"Email người gửi '{senderEmail}' chưa được xác thực (verified sender) trong tài khoản Brevo của bạn. Hãy vào Brevo > Senders & IP để xác nhận.";
+            }
+            throw new InvalidOperationException($"Brevo lỗi ({response.StatusCode}): {friendlyReason}");
         }
     }
 

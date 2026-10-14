@@ -193,9 +193,15 @@ window.toggleInfoPanel = function(force) {
 // ==========================================================================
 let otpCooldownInterval = null;
 let currentDevOtp = null;
+let isSendingOtp = false;
 
 window.requestEmailOtp = async function() {
     console.log("--> Bắt đầu gửi yêu cầu mã OTP qua Email...");
+    if (isSendingOtp) {
+        console.warn("Đang trong quá trình gửi OTP, bỏ qua lượt bấm lặp.");
+        return;
+    }
+
     const emailInput = document.getElementById("reg-email");
     const email = emailInput?.value.trim();
     const username = document.getElementById("reg-username")?.value.trim() || "Người dùng";
@@ -222,8 +228,12 @@ window.requestEmailOtp = async function() {
 
     const btn = document.getElementById("btn-send-otp");
     const btnText = document.getElementById("btn-send-otp-text");
+    const btnIcon = btn?.querySelector("i");
+
+    isSendingOtp = true;
     if (btn) btn.disabled = true;
-    if (btnText) btnText.innerText = "Đang gửi...";
+    if (btnText) btnText.innerText = "Đang gửi OTP...";
+    if (btnIcon) btnIcon.className = "fas fa-spinner fa-spin";
 
     try {
         const resp = await fetch("/api/auth/send-email-otp", {
@@ -256,10 +266,16 @@ window.requestEmailOtp = async function() {
         }
 
         const otpInput = document.getElementById("reg-otp");
-        if (otpInput) otpInput.focus();
+        if (otpInput) {
+            otpInput.focus();
+            if (data.devOtp && !data.realEmailSent) {
+                otpInput.value = data.devOtp;
+            }
+        }
 
         // 60-second cooldown
         let remaining = 60;
+        if (btnIcon) btnIcon.className = "fas fa-clock";
         if (btnText) btnText.innerText = `Gửi lại (${remaining}s)`;
         if (otpCooldownInterval) clearInterval(otpCooldownInterval);
         otpCooldownInterval = setInterval(() => {
@@ -267,6 +283,7 @@ window.requestEmailOtp = async function() {
             if (remaining <= 0) {
                 clearInterval(otpCooldownInterval);
                 if (btn) btn.disabled = false;
+                if (btnIcon) btnIcon.className = "fas fa-paper-plane";
                 if (btnText) btnText.innerText = "Gửi OTP qua Email";
             } else {
                 if (btnText) btnText.innerText = `Gửi lại (${remaining}s)`;
@@ -276,7 +293,10 @@ window.requestEmailOtp = async function() {
     } catch (err) {
         alert("Thông báo gửi OTP: " + err.message);
         if (btn) btn.disabled = false;
+        if (btnIcon) btnIcon.className = "fas fa-paper-plane";
         if (btnText) btnText.innerText = "Gửi OTP qua Email";
+    } finally {
+        isSendingOtp = false;
     }
 };
 
@@ -375,14 +395,6 @@ function setupAuthHandlers() {
     const btnImport = document.getElementById("btn-import-keystore");
     const importSection = document.getElementById("import-section");
     const btnLogout = document.getElementById("btn-logout");
-    const btnSendOtp = document.getElementById("btn-send-otp");
-
-    if (btnSendOtp) {
-        btnSendOtp.addEventListener("click", (e) => {
-            e.preventDefault();
-            requestEmailOtp();
-        });
-    }
 
     btnShowImport.addEventListener("click", () => {
         importSection.style.display = importSection.style.display === "none" ? "block" : "none";
