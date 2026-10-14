@@ -104,6 +104,7 @@ public class MongoDbService
     public bool IsConnected { get; private set; }
     public string? LastError { get; private set; }
     public DateTime LastCheckedAt { get; private set; } = DateTime.UtcNow;
+    public event Func<Task>? OnConnected;
 
     public MongoDbService(IConfiguration configuration, ILogger<MongoDbService> logger)
     {
@@ -165,6 +166,15 @@ public class MongoDbService
 
             // Ensure optimized indexes
             await CreateIndexesAsync();
+
+            if (OnConnected != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try { await OnConnected.Invoke(); }
+                    catch (Exception ex) { _logger.LogWarning("Lỗi OnConnected sync: {Error}", ex.Message); }
+                });
+            }
 
             return true;
         }

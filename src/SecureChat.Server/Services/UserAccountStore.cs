@@ -42,6 +42,10 @@ public class UserAccountStore
         _storageFilePath = Path.Combine(dataDir, "users_store.json");
 
         LoadFromDisk();
+        if (_mongoDbService != null)
+        {
+            _mongoDbService.OnConnected += SyncWithMongoAsync;
+        }
         _ = SyncWithMongoAsync();
     }
 
