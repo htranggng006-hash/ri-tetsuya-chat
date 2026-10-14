@@ -83,13 +83,23 @@ app.MapPost("/api/auth/send-email-otp", async (SendEmailOtpRequest req, OtpServi
         // Send email via EmailService
         var sendResult = await emailService.SendOtpEmailAsync(email, username, record.Code);
 
+        if (!sendResult.Success)
+        {
+            return Results.BadRequest(new
+            {
+                error = sendResult.Message,
+                devOtp = record.Code,
+                provider = emailService.GetConfiguredProvider()
+            });
+        }
+
         return Results.Ok(new
         {
             success = true,
             message = sendResult.Message,
             realEmailSent = sendResult.RealEmailSent,
             provider = emailService.GetConfiguredProvider(),
-            devOtp = sendResult.RealEmailSent ? null : record.Code, // Provided only if no API key is configured yet for convenience
+            devOtp = sendResult.RealEmailSent ? null : record.Code,
             expiresInSeconds = (int)(record.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds
         });
     }

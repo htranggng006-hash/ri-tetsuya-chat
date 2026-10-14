@@ -186,6 +186,8 @@ window.toggleInfoPanel = function(force) {
         const willCollapse = force !== undefined ? !force : !panel.classList.contains("collapsed");
         panel.classList.toggle("collapsed", willCollapse);
     }
+};
+
 // ==========================================================================
 // EMAIL OTP VERIFICATION
 // ==========================================================================
@@ -193,24 +195,34 @@ let otpCooldownInterval = null;
 let currentDevOtp = null;
 
 window.requestEmailOtp = async function() {
-    const email = document.getElementById("reg-email")?.value.trim();
+    console.log("--> Bắt đầu gửi yêu cầu mã OTP qua Email...");
+    const emailInput = document.getElementById("reg-email");
+    const email = emailInput?.value.trim();
     const username = document.getElementById("reg-username")?.value.trim() || "Người dùng";
 
     if (!email) {
         alert("Vui lòng nhập địa chỉ Email trước khi yêu cầu gửi mã OTP!");
-        document.getElementById("reg-email")?.focus();
+        if (emailInput) {
+            emailInput.focus();
+            emailInput.style.borderColor = "#ff4d4f";
+            setTimeout(() => emailInput.style.borderColor = "", 2500);
+        }
         return;
     }
 
     if (!email.includes("@") || !email.includes(".")) {
         alert("Địa chỉ email không hợp lệ! Vui lòng nhập đúng định dạng (ví dụ: name@gmail.com).");
-        document.getElementById("reg-email")?.focus();
+        if (emailInput) {
+            emailInput.focus();
+            emailInput.style.borderColor = "#ff4d4f";
+            setTimeout(() => emailInput.style.borderColor = "", 2500);
+        }
         return;
     }
 
     const btn = document.getElementById("btn-send-otp");
     const btnText = document.getElementById("btn-send-otp-text");
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
     if (btnText) btnText.innerText = "Đang gửi...";
 
     try {
@@ -222,6 +234,10 @@ window.requestEmailOtp = async function() {
 
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) {
+            if (data.devOtp) {
+                currentDevOtp = data.devOtp;
+                showOtpToast(`Lỗi: ${data.error}`, data.devOtp, true);
+            }
             throw new Error(data.error || "Không thể gửi OTP.");
         }
 
@@ -236,7 +252,7 @@ window.requestEmailOtp = async function() {
         if (hintText) {
             hintText.innerText = data.realEmailSent
                 ? `Đã gửi mã OTP đến ${email}. Hãy kiểm tra hộp thư đến hoặc Spam!`
-                : `Đã tạo mã OTP mô phỏng (Chưa cấu hình API Key Email): ${data.devOtp}`;
+                : `Đã tạo mã OTP mô phỏng: ${data.devOtp}`;
         }
 
         const otpInput = document.getElementById("reg-otp");
@@ -250,7 +266,7 @@ window.requestEmailOtp = async function() {
             remaining--;
             if (remaining <= 0) {
                 clearInterval(otpCooldownInterval);
-                btn.disabled = false;
+                if (btn) btn.disabled = false;
                 if (btnText) btnText.innerText = "Gửi OTP qua Email";
             } else {
                 if (btnText) btnText.innerText = `Gửi lại (${remaining}s)`;
@@ -258,8 +274,8 @@ window.requestEmailOtp = async function() {
         }, 1000);
 
     } catch (err) {
-        alert("Lỗi gửi OTP: " + err.message);
-        btn.disabled = false;
+        alert("Thông báo gửi OTP: " + err.message);
+        if (btn) btn.disabled = false;
         if (btnText) btnText.innerText = "Gửi OTP qua Email";
     }
 };
@@ -359,6 +375,14 @@ function setupAuthHandlers() {
     const btnImport = document.getElementById("btn-import-keystore");
     const importSection = document.getElementById("import-section");
     const btnLogout = document.getElementById("btn-logout");
+    const btnSendOtp = document.getElementById("btn-send-otp");
+
+    if (btnSendOtp) {
+        btnSendOtp.addEventListener("click", (e) => {
+            e.preventDefault();
+            requestEmailOtp();
+        });
+    }
 
     btnShowImport.addEventListener("click", () => {
         importSection.style.display = importSection.style.display === "none" ? "block" : "none";
