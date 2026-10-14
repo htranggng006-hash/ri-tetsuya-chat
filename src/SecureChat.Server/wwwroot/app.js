@@ -737,12 +737,13 @@ function getLastMessageWith(userId) {
     return null;
 }
 
-async function selectRecipient(userId) {
+function selectRecipient(userId) {
     currentRecipientId = userId;
     renderContactList();
     updateRecipientHeader();
     renderChatHistory();
-    await loadChatHistoryFromMongo(userId);
+    // Non-blocking background history load
+    loadChatHistoryFromMongo(userId);
 }
 
 function updateRecipientHeader() {
@@ -838,8 +839,31 @@ async function sendMessage() {
     const recipient = contacts.get(currentRecipientId);
     const mode = document.querySelector('input[name="send-mode"]:checked').value;
 
+    // 1. OPTIMISTIC UI: Clear input immediately & display bubble in chat thread (0ms delay)
+    input.value = "";
+    input.focus();
+
+    const tempId = "msg-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+    const localMsg = {
+        messageId: tempId,
+        isMe: true,
+        senderId: currentUser.userId,
+        recipientId: recipient.userId,
+        plaintext: text,
+        envelope: null,
+        inspection: null,
+        isTampered: false,
+        tamperType: "",
+        isSending: true,
+        timestamp: new Date()
+    };
+
+    messages.push(localMsg);
+    renderChatHistory();
+    renderContactList();
+
+    // 2. SEAL & DISPATCH ASYNCHRONOUSLY
     try {
-        // 1. Seal message using Hybrid ElGamal-AES + ElGamal Signature
         let sealResp;
         try {
             sealResp = await fetch("/api/crypto/seal-message", {
@@ -861,7 +885,7 @@ async function sendMessage() {
             });
         } catch (fetchErr) {
             console.error("Lỗi fetch /api/crypto/seal-message:", fetchErr);
-            throw new Error(`Mất kết nối máy chủ (${fetchErr.message}). Khuyến nghị chạy bằng Ctrl+F5 hoặc file run-server.bat để Server không bị tắt khi tương tác browser.`);
+            throw new Error(`Mất kết nối máy chủ (${fetchErr.message}).`);
         }
 
         if (!sealResp.ok) {
@@ -891,45 +915,59 @@ async function sendMessage() {
             envelope.senderId = "AttackerEve";
         }
 
-        // 2. Ensure SignalR connection is active and transmit envelope
+        // 3. Ensure SignalR connection is active and transmit envelope
         if (!hubConnection || hubConnection.state !== signalR.HubConnectionState.Connected) {
-            console.warn("SignalR chưa sẵn sàng, đang cố gắng kết nối lại...");
+            console.warn("SignalR chưa sẵn sàng, đang kết nối lại...");
             try {
                 if (hubConnection) await hubConnection.start();
                 if (currentUser) await announcePublicKeys(currentUser);
             } catch (reconErr) {
                 console.error("Không thể kết nối lại SignalR:", reconErr);
-                throw new Error("Mất kết nối truyền tin thời gian thực (SignalR). Vui lòng thử lại sau vài giây.");
+                throw new Error("Mất kết nối truyền tin thời gian thực (SignalR).");
             }
         }
 
-        await hubConnection.invoke("SendEnvelope", envelope);
+        // Send over WebSocket without blocking
+        await hubConnection.send("SendEnvelope", envelope);
 
-        // 3. Save locally
-        messages.push({
-            messageId: envelope.messageId,
-            isMe: true,
-            senderId: currentUser.userId,
-            recipientId: recipient.userId,
-            plaintext: text,
-            envelope: envelope,
-            inspection: inspection,
-            isTampered: isTampered,
-            tamperType: tamperType,
-            timestamp: new Date()
-        });
+        // 4. Update local message state to confirmed sent
+        localMsg.messageId = envelope.messageId;
+        localMsg.envelope = envelope;
+        localMsg.inspection = inspection;
+        localMsg.isTampered = isTampered;
+        localMsg.tamperType = tamperType;
+        localMsg.isSending = false;
 
-        input.value = "";
         renderChatHistory();
         renderContactList();
     } catch (err) {
-        alert("Lỗi gửi tin nhắn: " + err.message);
+        localMsg.isSending = false;
+        localMsg.isError = true;
+        localMsg.errorMessage = "Gửi thất bại: " + err.message;
+        renderChatHistory();
+        console.error("Lỗi gửi tin nhắn:", err);
     }
 }
 
 // INCOMING ENVELOPE HANDLER
 async function handleIncomingEnvelope(envelope) {
-    const sender = contacts.get(envelope.senderId);
+    // Avoid duplicate processing if already received
+    if (messages.some(m => m.messageId === envelope.messageId)) {
+        return;
+    }
+
+    let sender = contacts.get(envelope.senderId);
+    if (!sender) {
+        try {
+            const keyResp = await fetch(`/api/user/keys?username=${encodeURIComponent(envelope.senderId)}`);
+            if (keyResp.ok) {
+                sender = await keyResp.json();
+                contacts.set(envelope.senderId, sender);
+                renderContactList();
+            }
+        } catch (_) {}
+    }
+
     let decryptedText = "";
     let isError = false;
     let errorMessage = "";
@@ -1492,13 +1530,10 @@ async function loadChatHistoryFromMongo(recipientId) {
         const envelopes = await resp.json();
         if (!Array.isArray(envelopes) || envelopes.length === 0) return;
 
-        let hasNew = false;
-        for (const env of envelopes) {
-            // Skip already loaded messages
-            if (messages.some(m => m.messageId === env.messageId)) {
-                continue;
-            }
+        const newEnvelopes = envelopes.filter(env => !messages.some(m => m.messageId === env.messageId));
+        if (newEnvelopes.length === 0) return;
 
+        const decryptedMessages = await Promise.all(newEnvelopes.map(async (env) => {
             const isMe = (env.senderId.toLowerCase() === currentUser.userId.toLowerCase());
             let decryptedText = "";
             let isError = false;
@@ -1509,7 +1544,6 @@ async function loadChatHistoryFromMongo(recipientId) {
                     ? currentUser.signingPublicKey 
                     : contacts.get(env.senderId)?.signingPublicKey;
 
-                // Fallback: fetch from server if not yet in contacts directory
                 if (!senderSigPk) {
                     try {
                         const keyResp = await fetch(`/api/user/keys?username=${encodeURIComponent(env.senderId)}`);
@@ -1549,7 +1583,7 @@ async function loadChatHistoryFromMongo(recipientId) {
                 errorMessage = err.message;
             }
 
-            messages.push({
+            return {
                 messageId: env.messageId,
                 isMe: isMe,
                 senderId: env.senderId,
@@ -1559,8 +1593,15 @@ async function loadChatHistoryFromMongo(recipientId) {
                 errorMessage: errorMessage,
                 envelope: env,
                 timestamp: new Date(env.timestamp || Date.now())
-            });
-            hasNew = true;
+            };
+        }));
+
+        let hasNew = false;
+        for (const dm of decryptedMessages) {
+            if (!messages.some(m => m.messageId === dm.messageId)) {
+                messages.push(dm);
+                hasNew = true;
+            }
         }
 
         if (hasNew) {

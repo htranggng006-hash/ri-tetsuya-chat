@@ -49,17 +49,27 @@ public class ChatHub : Hub
             envelope.MessageId, envelope.SenderId, envelope.RecipientId);
 
         var recipient = _directory.GetUser(envelope.RecipientId);
+        // Deliver to recipient's connection immediately
         if (recipient != null)
         {
-            // Deliver to recipient's connection
             await Clients.Client(recipient.ConnectionId).SendAsync("ReceiveEnvelope", envelope);
         }
 
-        // Echo back to sender for delivery acknowledgment
+        // Echo back to sender for delivery acknowledgment immediately
         await Clients.Caller.SendAsync("MessageSentAck", envelope);
 
-        // Zero-Knowledge backup to MongoDB: persist encrypted envelope
-        await _mongoDbService.SaveMessageAsync(envelope);
+        // Zero-Knowledge backup to MongoDB: run asynchronously in background so real-time chat is INSTANT
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _mongoDbService.SaveMessageAsync(envelope);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Lỗi sao lưu tin nhắn nền: {Error}", ex.Message);
+            }
+        });
     }
 
     public async Task RotateKeys(UserPublicKeyAnnouncement newAnnouncement)
